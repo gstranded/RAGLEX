@@ -52,21 +52,16 @@ cp /path/to/your/legal_docs/* data/
 # 进入后端目录
 cd law_backend_flask
 
-# 创建并激活 Python 虚拟环境 (推荐)
-python -m venv venv
-source venv/bin/activate  # on Windows use `venv\Scripts\activate`
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 初始化知识库 (首次运行时执行)
-# 注意：你需要根据 `init_knowledge_base.py` 的具体实现来运行
-# python init_knowledge_base.py
+# 创建并激活 Python 虚拟环境 
 
 # 启动后端 Flask 服务
-python app.py
+python run.py --env development --debug --host 0.0.0.0 --port 5000
 ```
 默认情况下，后端服务会运行在 `http://127.0.0.1:5000`。
+
+
+minio：使用wget下载minio之后：
+./minio server /data --console-address ":9001"
 
 ### 4. 配置并运行前端
 
