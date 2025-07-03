@@ -1,0 +1,64 @@
+# 测试依赖包
+
+# 核心测试框架
+pytest>=7.0.0
+pytest-html>=3.1.0
+pytest-cov>=4.0.0
+pytest-xdist>=3.0.0
+pytest-timeout>=2.1.0
+pytest-mock>=3.10.0
+
+# HTTP请求库
+requests>=2.28.0
+requests-mock>=1.10.0
+
+# 数据处理
+faker>=18.0.0
+factory-boy>=3.2.0
+
+# 性能测试
+locust>=2.14.0
+
+# 报告生成
+allure-pytest>=2.12.0
+pytest-json-report>=1.5.0
+
+# 代码质量
+flake8>=6.0.0
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.0.0
+
+# 安全测试
+bandit>=1.7.0
+safety>=2.3.0
+
+# 数据库测试（如果需要）
+pytest-postgresql>=4.1.0
+pytest-mysql>=2.3.0
+
+# 异步测试支持
+pytest-asyncio>=0.21.0
+
+# 环境管理
+python-dotenv>=1.0.0
+
+# 日期时间处理
+freezegun>=1.2.0
+
+# JSON处理
+jsonschema>=4.17.0
+
+# 文件处理
+openpyxl>=3.1.0
+PyPDF2>=3.0.0
+
+# 并发测试
+concurrent-futures>=3.1.1
+
+# 内存分析
+memory-profiler>=0.60.0
+
+# 网络测试
+responses>=0.23.0
+httpretty>=1.1.4

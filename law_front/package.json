@@ -1,0 +1,26 @@
+{
+  "name": "law_front_exam",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "lint": "eslint --ext .js,.vue src"
+  },
+  "dependencies": {
+    "axios": "^1.10.0",
+    "core-js": "^3.8.3",
+    "element-plus": "^2.3.12",
+    "markdown-it": "^14.1.0",
+    "marked": "^16.0.0",
+    "vue": "^3.5.17",
+    "vue-router": "^4.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/compiler-sfc": "^3.5.17",
+    "eslint": "^7.32.0",
+    "eslint-plugin-vue": "^8.0.3",
+    "vite": "^5.0.0"
+  }
+}

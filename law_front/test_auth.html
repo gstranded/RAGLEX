@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>认证测试</title>
+</head>
+<body>
+    <h1>认证测试</h1>
+    <button onclick="testAuth()">测试认证</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testAuth() {
+            const token = localStorage.getItem('access_token');
+            const resultDiv = document.getElementById('result');
+            
+            if (!token) {
+                resultDiv.innerHTML = '<p style="color: red;">未找到access_token，请先登录</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Token存在: ' + token.substring(0, 20) + '...</p>';
+            
+            try {
+                const response = await fetch('/api/files?page=1&per_page=10', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML += '<p style="color: green;">认证成功！状态码: ' + response.status + '</p>';
+                    resultDiv.innerHTML += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    resultDiv.innerHTML += '<p style="color: red;">认证失败！状态码: ' + response.status + '</p>';
+                    resultDiv.innerHTML += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML += '<p style="color: red;">请求失败: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: raglex_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: raglex_root_password
+      MYSQL_DATABASE: raglex_law
+      MYSQL_USER: raglex_user
+      MYSQL_PASSWORD: raglex_password
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - raglex_network
+
+  # MinIO对象存储
+  minio:
+    image: minio/minio:latest
+    container_name: raglex_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: raglex_minio_user
+      MINIO_ROOT_PASSWORD: raglex_minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - raglex_network
+
+  # Redis缓存（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: raglex_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - raglex_network
+
+  # Flask应用
+  flask_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: raglex_flask
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=mysql+pymysql://raglex_user:raglex_password@mysql:3306/raglex_law
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=raglex_minio_user
+      - MINIO_SECRET_KEY=raglex_minio_password
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-super-secret-key-change-this-in-production
+      - JWT_SECRET_KEY=your-jwt-secret-key-change-this-in-production
+    expose:
+      - "5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      - mysql
+      - minio
+      - redis
+    networks:
+      - raglex_network
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: raglex_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ../law_front/dist:/usr/share/nginx/html
+    depends_on:
+      - flask_app
+    networks:
+      - raglex_network
+
+volumes:
+  mysql_data:
+    driver: local
+  minio_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  raglex_network:
+    driver: bridge
