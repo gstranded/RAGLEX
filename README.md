@@ -99,15 +99,7 @@ RAGLEX/
 
 本项目提供了一键部署脚本 `deploy.sh`。有关详细的生产环境部署步骤，请参考 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-## 🤝 贡献
 
-欢迎对本项目进行贡献！你可以通过以下方式参与：
-
-1.  Fork 本仓库
-2.  创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
-3.  提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4.  将你的分支推送到远程 (`git push origin feature/AmazingFeature`)
-5.  创建一个 Pull Request
 ## 🙏 致谢
 
 在 `RAGLEX` 项目的开发过程中，我们参考了用户 **leocandoit** 的开源项目 **[LawBrain](https://github.com/leocandoit/LawBrain)** 中的部分代码和设计思路。该项目为我们提供了宝贵的灵感和实践参考。
