@@ -39,7 +39,7 @@ git clone [https://github.com/gstranded/RAGLEX.git](https://github.com/gstranded
 cd RAGLEX
 ```
 
-### 2. 配置环境
+### 2. 配置环境与依赖
 
 * **后端**: 创建并激活 Python 虚拟环境，然后安装依赖。
     ```bash
@@ -66,28 +66,50 @@ cd RAGLEX
     npm install
     ```
 
-### 3. 准备并初始化知识库
+### 3. 环境变量配置
+
+**这是启动服务的关键前提步骤。** 本项目需要 API 密钥等敏感信息，这些信息通过环境变量进行配置。
+
+1.  在后端代码目录 (`law_backend_flask`) 下，找到 `.env.example` 文件。
+2.  复制该文件并重命名为 `.env`。
+3.  编辑 `.env` 文件，填入您的个人密钥和配置信息。
+
+一个典型的 `.env` 文件内容如下：
+
+```env
+# OpenAI API Key
+OPENAI_API_KEY="sk-..."
+
+# Serper API Key for Web Search
+SERPER_API_KEY="..."
+
+# API Base (如果使用代理或特定服务)
+OPENAI_API_BASE="[https://api.gptsapi.net/v1](https://api.gptsapi.net/v1)"
+DEEPSEEK_API_BASE="[https://api.deepseek.com/v1](https://api.deepseek.com/v1)"
+```
+
+### 4. 准备并初始化知识库
 
 1.  **准备文档**: 将你的法律文档（如 `.txt`, `.md`, `.pdf` 文件）放入项目根目录下的 `data` 或 `config.py` 中指定的路径下。
-    ```bash
-    # 示例：
-    cp /path/to/your/legal_docs/* data/
-    ```
 2.  **初始化数据库**: **首次运行前必须执行此步骤**。该脚本会加载、处理文档，并将其向量化存入 ChromaDB。
     ```bash
-    # (在项目根目录) 运行数据库加载脚本
+    # (在后端代码目录中) 运行数据库加载脚本
     python reload_database.py
     ```
 
-### 4. 启动服务
+### 5. 启动服务
 
-* **启动后端 FastAPI 服务**: 后端服务由 `receive_data.py` 文件启动，它负责接收所有 API 请求。
+* **启动后端 FastAPI 服务**:
+    后端服务是一个由 `receive_data.py` 文件定义的 FastAPI 应用。它负责接收前端的所有 API 请求，并驱动整个问答和知识库管理流程。我们使用 `uvicorn` 来运行这个应用。
+
     ```bash
-    # (在项目根目录)
-    # 使用 uvicorn 启动 FastAPI 应用
+    # (在后端代码目录中)
+    # 使用 uvicorn 启动 receive_data.py 中定义的 app
     uvicorn receive_data:app --host 0.0.0.0 --port 10086 --reload
     ```
-    后端服务会运行在 `http://0.0.0.0:10086`。
+    * `receive_data:app` 指的是运行 `receive_data.py` 文件中的 `app` 实例。
+    * `--reload` 参数会使服务在代码变更后自动重启，非常适合开发环境。
+    * 服务成功启动后，后端 API 会监听在 `http://0.0.0.0:10086`。
 
 * **启动前端开发服务器**:
     ```bash
