@@ -1,0 +1,63 @@
+# 环境变量文件
+.env
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 数据库文件
+*.db
+*.sqlite3
+*.sql
+
+# 向量数据库
+chroma_db/
+
+# 缓存文件
+.cache/
+
+# 法律文档（可能包含版权内容）
+law_docs/
+
+# 模型文件
+models/
+
+# 日志文件
+*.log
+logs/
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.temp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# 分发/打包
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

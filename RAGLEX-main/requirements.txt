@@ -1,0 +1,43 @@
+# FastAPI相关
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# LangChain相关
+langchain==0.1.0
+langchain-community==0.0.10
+langchain-core==0.1.10
+langchain-openai==0.0.2
+
+# 向量数据库
+chromadb==0.4.18
+
+# 嵌入模型
+sentence-transformers==2.2.2
+transformers==4.36.2
+torch==2.1.2
+
+# 其他依赖
+python-dotenv==1.0.0
+pydantic==2.5.2
+requests==2.31.0
+numpy==1.24.3
+scipy==1.11.4
+
+# 文档处理
+markdown==3.5.1
+beautifulsoup4==4.12.2
+
+# 重排序模型
+FlagEmbedding==1.2.5
+
+# 搜索相关
+duckduckgo-search==3.9.6
+
+# 开发工具
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+
+rank_bm25
+docx2txt
