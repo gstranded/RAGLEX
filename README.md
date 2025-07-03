@@ -45,7 +45,6 @@ cd RAGLEX
 # 示例：
 cp /path/to/your/legal_docs/* data/
 ```
-
 ### 3. 配置并运行后端
 
 ```bash
@@ -56,13 +55,11 @@ cd law_backend_flask
 
 # 启动后端 Flask 服务
 python run.py --env development --debug --host 0.0.0.0 --port 5000
-```
 默认情况下，后端服务会运行在 `http://127.0.0.1:5000`。
-
 
 minio：使用wget下载minio之后：
 ./minio server /data --console-address ":9001"
-
+```
 ### 4. 配置并运行前端
 
 ```bash
