@@ -15,6 +15,21 @@ RAGLEX 是一个专为法律领域设计的问答系统。它结合了**检索�
 * **前后端分离**: 采用现代化的前后端分离架构，易于维护和扩展。
 * **Web 界面**: 提供简洁直观的 Web 交互界面，用户体验友好。
 
+## 📸 系统预览
+
+<table>
+  <tr>
+    <td align="center">
+      <p><b>智能问答界面</b></p>
+      <img src="./picture/QA.png" alt="RAGLEX 问答界面" width="100%">
+    </td>
+    <td align="center">
+      <p><b>知识库文件管理</b></p>
+      <img src="./picture/file_manage.png" alt="RAGLEX 文件管理" width="100%">
+    </td>
+  </tr>
+</table>
+
 ## 🔧 技术栈
 
 * **后端**:
