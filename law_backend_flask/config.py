@@ -74,8 +74,13 @@ class Config:
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or 'mysql+pymysql://root:Mysql123!@localhost:3306/law_system'
-    
+    # Local/dev defaults: allow SQLite without requiring MySQL.
+    SQLALCHEMY_DATABASE_URI = (
+        os.environ.get('DEV_DATABASE_URL')
+        or os.environ.get('DATABASE_URL')
+        or f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'raglex-dev.sqlite3')}"
+    )
+
 class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False

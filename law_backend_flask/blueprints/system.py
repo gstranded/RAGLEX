@@ -6,7 +6,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, text
 from models import db, User,  UserFile, SystemConfig
 from utils.auth import login_required, admin_required, sanitize_input, log_user_activity
 
@@ -191,23 +191,25 @@ def get_system_stats(current_user):
 def health_check():
     """系统健康检查"""
     try:
-        # 检查数据库连接
-        db.session.execute('SELECT 1')
+        # 检查数据库连接（SQLAlchemy 2.x 建议使用 text() 包裹原始 SQL）
+        db.session.execute(text('SELECT 1'))
         db_status = 'healthy'
     except Exception as e:
         current_app.logger.error(f"数据库健康检查失败: {str(e)}")
         db_status = 'unhealthy'
-    
-    # 检查MinIO连接
+
+    # 检查MinIO连接（支持 MINIO_DISABLED=true 的本地调试模式）
     try:
         from utils.minio_client import check_minio_health
-        minio_status = 'healthy' if check_minio_health() else 'unhealthy'
+        minio_health = check_minio_health() or {}
+        minio_status = minio_health.get('status') or 'unhealthy'
     except Exception as e:
         current_app.logger.error(f"MinIO健康检查失败: {str(e)}")
         minio_status = 'unhealthy'
-    
-    # 系统状态
-    overall_status = 'healthy' if db_status == 'healthy' and minio_status == 'healthy' else 'unhealthy'
+
+    # 系统状态：MinIO disabled 视作可用（本地最小启动不依赖 MinIO）
+    minio_ok = minio_status in {'healthy', 'disabled'}
+    overall_status = 'healthy' if db_status == 'healthy' and minio_ok else 'unhealthy'
     
     health_info = {
         'status': overall_status,

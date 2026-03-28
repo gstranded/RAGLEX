@@ -60,6 +60,8 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+# RAGLEX local dev SQLite DBs
+law_backend_flask/data/*.sqlite3*
 
 # Flask stuff:
 instance/

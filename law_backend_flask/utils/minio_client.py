@@ -16,10 +16,23 @@ import logging
 # 全局MinIO客户端
 minio_client = None
 
+
+def is_minio_disabled() -> bool:
+    """Return True when MinIO integration should be skipped (local/dev without MinIO)."""
+    return str(os.environ.get('MINIO_DISABLED') or '').strip().lower() in {
+        '1', 'true', 'yes', 'y', 'on'
+    }
+
+
 def init_minio(app):
     """初始化MinIO客户端"""
     global minio_client
-    
+
+    if is_minio_disabled():
+        app.logger.info("MinIO disabled via MINIO_DISABLED=true; skipping MinIO init")
+        minio_client = None
+        return
+
     try:
         minio_client = Minio(
             app.config['MINIO_ENDPOINT'],
@@ -286,16 +299,22 @@ def download_file_by_path(minio_path):
 
 def check_minio_health():
     """检查MinIO连接健康状态
-    
+
     Returns:
         dict: 健康状态信息
     """
+    if is_minio_disabled():
+        return {
+            'status': 'disabled',
+            'message': 'MinIO disabled via MINIO_DISABLED=true'
+        }
+
     if not minio_client:
         return {
             'status': 'error',
             'message': 'MinIO客户端未初始化'
         }
-    
+
     try:
         # 尝试列出buckets来测试连接
         buckets = minio_client.list_buckets()
