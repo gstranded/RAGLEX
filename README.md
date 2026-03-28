@@ -20,20 +20,46 @@ RAGLEX 是一个面向法律场景的知识库问答系统，包含：
 
 这条链路不依赖私有 IP，也不强制依赖 MinIO / MySQL / 独立 FastAPI RAG 服务，适合直接开源发布和本地复现。
 
-## 系统预览
+## 系统截图
 
-<table>
-  <tr>
-    <td align="center">
-      <p><b>智能问答界面</b></p>
-      <img src="./picture/QA.png" alt="RAGLEX 问答界面" width="100%">
-    </td>
-    <td align="center">
-      <p><b>知识库文件管理</b></p>
-      <img src="./picture/file_manage.png" alt="RAGLEX 文件管理" width="100%">
-    </td>
-  </tr>
-</table>
+### 1. 登录页
+
+<p align="center">
+  <img src="./picture/登录.png" alt="RAGLEX 登录页" width="85%">
+</p>
+
+### 2. 对话主页
+
+<p align="center">
+  <img src="./picture/对话主页.png" alt="RAGLEX 对话主页" width="85%">
+</p>
+
+### 3. 智能问答界面
+
+<p align="center">
+  <img src="./picture/QA.png" alt="RAGLEX 智能问答界面" width="85%">
+</p>
+
+### 4. 案件文档管理页
+
+<p align="center">
+  <img src="./picture/案件管理.png" alt="RAGLEX 案件文档管理页" width="85%">
+</p>
+
+### 5. 文件管理页
+
+<p align="center">
+  <img src="./picture/file_manage.png" alt="RAGLEX 文件管理页" width="85%">
+</p>
+
+### 6. 上传文档弹窗
+
+<p align="center">
+  <img src="./picture/upload.png" alt="RAGLEX 上传文档弹窗" width="60%">
+</p>
+
+---
+
 
 ## 功能特性
 
