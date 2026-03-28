@@ -1,30 +1,49 @@
-# RUN_LOCAL (clean-clone)
+# RUN_LOCAL
 
-目标：在**无 sudo**、系统 `python3` 缺 `pip/venv` 的主机上，也能跑通 RAGLEX 最小本地闭环：
+本文档面向“拿到仓库就想先跑起来”的场景。
 
-- 后端：SQLite + `MINIO_DISABLED=true` 启动，并能访问 `/api/health`
-- 前端：`law_front` 可 `npm install` + `npm run build`（或 `npm run serve`）
+## 最短路径
 
-> 本文档面向「clean clone」。如果你在旧目录里遇到 `npm install EACCES`，优先重新 `git clone` 到当前用户拥有的目录。
+### 1. 复制环境文件
 
----
+```bash
+cp .env.local.example .env.local
+```
 
-## 0) 前置条件
+### 2. 启动 Ollama 并拉模型
 
-- Linux
-- `python3` (>= 3.10)
-- `curl`
-- `node` + `npm`
+```bash
+ollama serve
+./scripts/pull_ollama_model.sh
+```
 
-> 备注：当前 host 的已知限制：`python3 -m pip` 不存在、`python3 -m venv` 失败（缺 `python3-venv/ensurepip`），且无 sudo。
+如果机器资源有限，可以改拉更小的模型：
 
----
+```bash
+OLLAMA_MODEL=qwen2.5:3b ./scripts/pull_ollama_model.sh
+```
 
-## 1) 后端（SQLite + MINIO disabled）
+### 3. 一键启动
 
-### 1.1 Python bootstrap（无 sudo）
+```bash
+./deploy.sh
+```
 
-在仓库根目录执行：
+### 4. 打开页面
+
+```text
+http://127.0.0.1:13000
+```
+
+### 5. 一键回归
+
+```bash
+./scripts/smoke_local.sh
+```
+
+## 如果系统里没有 venv / pip
+
+可以直接执行：
 
 ```bash
 ./scripts/bootstrap_python.sh
@@ -32,81 +51,103 @@
 
 它会：
 
-1. 用 `get-pip.py --user` 安装 pip 到用户目录（不依赖系统 `python3-venv`）
-2. 安装 `virtualenv`
-3. 创建 repo-local venv：`./.venv`
-4. 安装后端依赖：`law_backend_flask/requirements.txt`
+1. 检查 `python3`
+2. 如缺少 `pip`，自动通过 `get-pip.py --user` 安装
+3. 安装 `virtualenv`
+4. 创建仓库本地 `.venv`
+5. 安装后端依赖
 
-### 1.2 启动后端
+## 如果你不想用 Ollama
 
-```bash
-./scripts/run_backend_sqlite.sh
+把 `.env.local` 改成你自己的 OpenAI-compatible 端点：
+
+```env
+OPENAI_COMPAT_BASE_URL=https://your-endpoint.example.com/v1
+OPENAI_COMPAT_API_KEY=your-api-key
+OPENAI_CHAT_MODEL=your-model-name
 ```
 
-默认：
-
-- `DEV_DATABASE_URL=sqlite:///law_backend_flask/data/raglex-dev.sqlite3`
-- `MINIO_DISABLED=true`
-- listen: `127.0.0.1:5000`
-
-### 1.3 健康检查
+然后重新执行：
 
 ```bash
-curl -fsS http://127.0.0.1:5000/api/health | jq .
+./deploy.sh
 ```
 
-期望：HTTP 200，且 `status=healthy`。
+## 运行控制
 
----
-
-## 2) 前端（law_front）
+### 启动
 
 ```bash
-cd law_front
-
-# 不复用旧 node_modules（避免“污染”与权限问题）
-rm -rf node_modules
-
-npm install
-npm run build
-
-# 开发模式
-npm run serve
-# -> http://127.0.0.1:13000 （vite.config.js 里配置）
+./scripts/start_local.sh
 ```
 
-默认 proxy：`/api -> http://localhost:5000`
+### 停止
 
----
+```bash
+./scripts/stop_local.sh
+```
 
-## 3) 一键 smoke（可选）
+### 状态
+
+```bash
+./scripts/status_local.sh
+```
+
+### 回归测试
 
 ```bash
 ./scripts/smoke_local.sh
 ```
 
-它会：
+如果后端已经启动，`smoke_local.sh` 会复用当前实例；如果没有启动，它会自行拉起并在结束后自动清理。
 
-- bootstrap python + 启动后端 + curl `/api/health`
-- 清理前端 `node_modules` 后执行 `npm install` + `npm run build`
+### 日志
 
----
+```bash
+tail -f .logs/backend.log
+tail -f .logs/frontend.log
+```
 
 ## 常见问题
 
-### Q1: `npm install` 报 EACCES
+### 1. `ollama` 不存在
 
-这通常是目录 ownership 错了（例如目录由其他 uid 拥有）。建议：
+先安装：
 
-- 不要在“别人拥有”的目录里硬修
-- 重新 `git clone` 到你自己拥有的目录
+<https://ollama.com/download>
 
-### Q2: 后端启动慢 / 卡住
+### 2. 问答时报网络错误
 
-若本机没有 MinIO，确保：
+通常是模型端点不可用。先检查：
 
 ```bash
-export MINIO_DISABLED=true
+curl http://127.0.0.1:11434/v1/models
 ```
 
-（`run_backend_sqlite.sh` 默认已设置。）
+### 3. 文件上传失败
+
+默认本地模式不依赖 MinIO，会写入：
+
+```text
+law_backend_flask/data/local_object_store/
+```
+
+请确认当前用户对该目录有写权限。
+
+### 4. 前端能打开但接口报错
+
+检查：
+
+```bash
+curl http://127.0.0.1:5000/api/health
+```
+
+期望返回：
+
+```json
+{
+  "status": "healthy"
+}
+```
+
+如果你改过 `.env.local` 里的端口，请把上面的 `5000` 换成你自己的 `BACKEND_PORT`。

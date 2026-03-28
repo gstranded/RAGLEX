@@ -1,13 +1,13 @@
 // 对话相关的API调用
-import { apiRequest } from '../utils/api.js'
+import { apiRequest, buildApiUrl } from '../utils/api.js'
 
 // API端点
 const CONVERSATION_ENDPOINTS = {
-  LIST: 'http://localhost:5000/api/conversations/',
-  CREATE: 'http://localhost:5000/api/conversations/',
-  MESSAGES: (id) => `http://localhost:5000/api/conversations/${id}/messages`,
-  DELETE: (id) => `http://localhost:5000/api/conversations/${id}`,
-  UPDATE: (id) => `http://localhost:5000/api/conversations/${id}`
+  LIST: buildApiUrl('/api/conversations/'),
+  CREATE: buildApiUrl('/api/conversations/'),
+  MESSAGES: (id) => buildApiUrl(`/api/conversations/${id}/messages`),
+  DELETE: (id) => buildApiUrl(`/api/conversations/${id}`),
+  UPDATE: (id) => buildApiUrl(`/api/conversations/${id}`)
 }
 
 /**
@@ -122,7 +122,7 @@ export const sendQuestionWithConversation = (question, conversationId = null, co
     data.mode = config.mode
   }
   
-  return apiRequest('http://localhost:5000/api/query', {
+  return apiRequest(buildApiUrl('/api/query'), {
     method: 'POST',
     data
   })

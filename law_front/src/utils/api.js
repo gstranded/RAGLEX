@@ -1,27 +1,33 @@
 // API配置文件
-const API_BASE_URL = 'http://localhost:5000'
+// 默认使用同源 /api，避免远程访问前端时浏览器错误地请求本机 localhost:5000。
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
+export function buildApiUrl(path) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${API_BASE_URL}${normalizedPath}`
+}
 
 // API端点配置
 export const API_ENDPOINTS = {
   // 认证相关
   AUTH: {
-    LOGIN: `${API_BASE_URL}/api/auth/login`,
-    REGISTER: `${API_BASE_URL}/api/auth/register`,
-    PROFILE: `${API_BASE_URL}/api/auth/profile`
+    LOGIN: buildApiUrl('/api/auth/login'),
+    REGISTER: buildApiUrl('/api/auth/register'),
+    PROFILE: buildApiUrl('/api/auth/profile')
   },
   
   // 查询相关
-  QUERY: `${API_BASE_URL}/api/query`,
+  QUERY: buildApiUrl('/api/query'),
   
   // 文件相关
   FILE: {
-    UPLOAD: `${API_BASE_URL}/api/files/upload`,
-    PREVIEW: (fileName) => `${API_BASE_URL}/api/preview/${fileName}`,
-    DELETE: (fileName) => `${API_BASE_URL}/api/files/${fileName}`
+    UPLOAD: buildApiUrl('/api/files/upload'),
+    PREVIEW: (fileName) => buildApiUrl(`/api/preview/${fileName}`),
+    DELETE: (fileName) => buildApiUrl(`/api/files/${fileName}`)
   },
   
   // 健康检查
-  HEALTH: `${API_BASE_URL}/health`
+  HEALTH: buildApiUrl('/api/health')
 }
 
 // 获取认证headers
@@ -73,7 +79,9 @@ export async function apiRequest(url, options = {}) {
 }
 
 export default {
+  API_BASE_URL,
   API_ENDPOINTS,
+  buildApiUrl,
   getAuthHeaders,
   getUploadHeaders,
   apiRequest

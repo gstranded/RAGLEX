@@ -1,15 +1,18 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const devPort = Number(process.env.FRONTEND_PORT || process.env.VITE_DEV_PORT || 13000)
+const proxyTarget = process.env.VITE_PROXY_TARGET || process.env.BACKEND_URL || 'http://127.0.0.1:5000'
+
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 13000, // 保持与之前端口一致
-    open: true, // 自动打开浏览器
+    port: devPort,
+    open: false,
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: proxyTarget,
         changeOrigin: true,
         secure: false
       }

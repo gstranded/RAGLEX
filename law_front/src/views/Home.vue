@@ -108,7 +108,9 @@
           <div class="config-item">
             <label>大语言模型:</label>
             <select v-model="largeLanguageModel">
-              <option value="ChatGLM-6B">ChatGLM-6B</option>
+              <option value="qwen2.5:7b">qwen2.5:7b</option>
+              <option value="qwen2.5:3b">qwen2.5:3b</option>
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
             </select>
           </div>
           <div class="config-item">
@@ -160,7 +162,7 @@ export default {
     return {
       question: '',
       embeddingModel: 'text2vec-base',
-      largeLanguageModel: 'ChatGLM-6B',
+      largeLanguageModel: 'qwen2.5:7b',
       topK: 3,
       webSearch: 'notUse',
       mode: 'none_knowledge',

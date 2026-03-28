@@ -10,6 +10,7 @@ from minio.error import S3Error
 from flask import current_app
 import uuid
 import os
+import io
 from datetime import timedelta
 import logging
 
@@ -22,6 +23,29 @@ def is_minio_disabled() -> bool:
     return str(os.environ.get('MINIO_DISABLED') or '').strip().lower() in {
         '1', 'true', 'yes', 'y', 'on'
     }
+
+
+def use_local_storage() -> bool:
+    """MinIO 不可用时自动退化到本地文件存储。"""
+    return is_minio_disabled() or minio_client is None
+
+
+def get_local_storage_root() -> str:
+    base_dir = current_app.config.get('DATA_FOLDER') or current_app.config.get('UPLOAD_FOLDER') or os.getcwd()
+    storage_root = os.path.join(base_dir, 'local_object_store')
+    os.makedirs(storage_root, exist_ok=True)
+    return storage_root
+
+
+def get_local_object_path(bucket_name: str, object_name: str) -> str:
+    bucket_dir = os.path.abspath(os.path.join(get_local_storage_root(), bucket_name))
+    os.makedirs(bucket_dir, exist_ok=True)
+
+    safe_object_name = (object_name or '').lstrip('/').replace('\\', '/')
+    candidate = os.path.abspath(os.path.normpath(os.path.join(bucket_dir, safe_object_name)))
+    if not candidate.startswith(bucket_dir + os.sep) and candidate != bucket_dir:
+        raise ValueError('非法对象路径')
+    return candidate
 
 
 def init_minio(app):
@@ -68,9 +92,6 @@ def upload_file(file_obj, original_filename, folder='documents'):
     Returns:
         dict: 包含上传结果的字典
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
         # 生成唯一的文件名
         file_extension = os.path.splitext(original_filename)[1]
@@ -82,8 +103,25 @@ def upload_file(file_obj, original_filename, folder='documents'):
         file_size = file_obj.tell()
         file_obj.seek(0)  # 重置到文件开头
         
-        # 上传文件
         bucket_name = current_app.config['MINIO_BUCKET_NAME']
+        if use_local_storage():
+            local_path = get_local_object_path(bucket_name, object_name)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            with open(local_path, 'wb') as local_file:
+                local_file.write(file_obj.read())
+            file_obj.seek(0)
+
+            return {
+                'success': True,
+                'bucket': bucket_name,
+                'object_name': object_name,
+                'filename': unique_filename,
+                'original_filename': original_filename,
+                'file_size': file_size,
+                'etag': None,
+                'storage': 'local'
+            }
+
         result = minio_client.put_object(
             bucket_name,
             object_name,
@@ -125,10 +163,14 @@ def download_file(bucket_name, object_name):
     Returns:
         file_obj: 文件对象
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
+        if use_local_storage():
+            local_path = get_local_object_path(bucket_name, object_name)
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f'文件不存在: {object_name}')
+            with open(local_path, 'rb') as local_file:
+                return io.BytesIO(local_file.read())
+
         response = minio_client.get_object(bucket_name, object_name)
         return response
     except S3Error as e:
@@ -148,10 +190,13 @@ def delete_file(bucket_name, object_name):
     Returns:
         bool: 删除是否成功
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
+        if use_local_storage():
+            local_path = get_local_object_path(bucket_name, object_name)
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return True
+
         minio_client.remove_object(bucket_name, object_name)
         return True
     except S3Error as e:
@@ -172,10 +217,10 @@ def get_file_url(bucket_name, object_name, expires=timedelta(hours=1)):
     Returns:
         str: 预签名URL
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
+        if use_local_storage():
+            return f"local://{bucket_name}/{object_name}"
+
         url = minio_client.presigned_get_object(
             bucket_name,
             object_name,
@@ -200,10 +245,24 @@ def list_files(bucket_name, prefix='', recursive=True):
     Returns:
         list: 文件列表
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
+        if use_local_storage():
+            bucket_dir = get_local_object_path(bucket_name, '')
+            files = []
+            for root, _, filenames in os.walk(bucket_dir):
+                for filename in filenames:
+                    full_path = os.path.join(root, filename)
+                    object_name = os.path.relpath(full_path, bucket_dir).replace('\\', '/')
+                    if prefix and not object_name.startswith(prefix):
+                        continue
+                    files.append({
+                        'object_name': object_name,
+                        'size': os.path.getsize(full_path),
+                        'last_modified': None,
+                        'etag': None
+                    })
+            return files
+
         objects = minio_client.list_objects(
             bucket_name,
             prefix=prefix,
@@ -261,13 +320,10 @@ def download_file_by_path(minio_path):
     Returns:
         tuple: (file_data, filename, content_type) 或 None
     """
-    if not minio_client:
-        raise Exception("MinIO客户端未初始化")
-    
     try:
         # 解析路径
-        if '/' in minio_path:
-            # 如果路径包含bucket名称
+        if '/' in minio_path and not minio_path.startswith('generals/') and not minio_path.startswith('cases/'):
+            # 完整路径格式: bucket_name/object_name
             parts = minio_path.split('/', 1)
             bucket_name = parts[0]
             object_name = parts[1]
@@ -276,9 +332,15 @@ def download_file_by_path(minio_path):
             bucket_name = current_app.config['MINIO_BUCKET_NAME']
             object_name = minio_path
         
-        # 下载文件
-        response = minio_client.get_object(bucket_name, object_name)
-        file_data = response.read()
+        if use_local_storage():
+            local_path = get_local_object_path(bucket_name, object_name)
+            if not os.path.exists(local_path):
+                return None
+            with open(local_path, 'rb') as local_file:
+                file_data = local_file.read()
+        else:
+            response = minio_client.get_object(bucket_name, object_name)
+            file_data = response.read()
         
         # 获取文件名和内容类型
         filename = os.path.basename(object_name)
@@ -311,8 +373,8 @@ def check_minio_health():
 
     if not minio_client:
         return {
-            'status': 'error',
-            'message': 'MinIO客户端未初始化'
+            'status': 'local',
+            'message': 'MinIO不可用，当前使用本地文件存储兜底'
         }
 
     try:
