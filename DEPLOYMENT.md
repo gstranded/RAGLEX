@@ -1,257 +1,378 @@
-# RAGLEX 部署指南
+# RAGLEX Deployment Guide
 
-本文档详细说明了如何部署RAGLEX法律知识问答系统。
+本文档描述当前推荐的 RAGLEX 部署方式。默认推荐的是：
 
-## 系统要求
+- Flask 后端
+- Vue 前端
+- SQLite
+- 本地文件存储兜底
+- OpenAI-compatible LLM
 
-### 硬件要求
-- CPU: 2核心以上
-- 内存: 4GB以上
-- 存储: 20GB以上可用空间
+这是当前仓库里最稳定、最容易复现、最适合 GitHub 用户直接运行的链路。
 
-### 软件要求
-- Docker 20.10+
-- Docker Compose 2.0+
-- Node.js 16+
-- npm 8+
+## 1. 部署模式
 
-## 快速部署
+### 模式 A：本地开发 / 单机部署
 
-### 1. 克隆项目
-```bash
-git clone <repository-url>
-cd RAGLEX
-```
+适合：
 
-### 2. 一键部署
+- 本地开发
+- 单机演示
+- 云主机快速试跑
+
+组成：
+
+- 前端：Vite dev server
+- 后端：Flask
+- 数据库：SQLite
+- 文件存储：本地文件系统
+- 模型：Ollama 或任意 OpenAI-compatible 服务
+
+入口命令：
+
 ```bash
 ./deploy.sh
 ```
 
-### 3. 访问应用
-- 前端应用: http://localhost
-- 后端API: http://localhost/api
-- MinIO控制台: http://localhost:9001
+### 模式 B：单机生产化部署
 
-## 手动部署
+适合：
 
-### 1. 构建前端
+- 内网服务器
+- 单台 Linux 主机
+- 小规模团队内部使用
+
+建议组合：
+
+- 前端：构建后用 Nginx/Caddy 托管
+- 后端：Flask + Gunicorn / systemd
+- 数据库：SQLite 或 MySQL
+- 文件存储：本地文件系统或 MinIO
+- 模型：Ollama / vLLM / LM Studio / OneAPI / OpenAI-compatible provider
+
+## 2. 前置要求
+
+### 必需
+
+- Linux / macOS
+- `python3` 3.10+
+- `node` 18+
+- `npm`
+- `curl`
+
+### 模型服务
+
+二选一：
+
+1. 本地 Ollama
+2. 外部 OpenAI-compatible API
+
+## 3. 环境配置
+
+复制模板：
+
 ```bash
-cd law_front
-npm install
-npm run build
-cd ..
+cp .env.local.example .env.local
 ```
 
-### 2. 配置环境变量
-```bash
-cd law_backend_flask
-cp .env.production .env
-# 编辑 .env 文件，修改密码和密钥
-```
+默认模板已经包含：
 
-### 3. 启动服务
-```bash
-docker-compose up --build -d
-```
-
-## 服务架构
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Nginx     │    │   Flask     │    │   MySQL     │
-│  (端口80)   │───▶│  (端口5000) │───▶│  (端口3306) │
-└─────────────┘    └─────────────┘    └─────────────┘
-                           │
-                           ▼
-                   ┌─────────────┐    ┌─────────────┐
-                   │   MinIO     │    │   Redis     │
-                   │  (端口9000) │    │  (端口6379) │
-                   └─────────────┘    └─────────────┘
-```
-
-## 服务说明
-
-### Nginx (反向代理)
-- 端口: 80, 443
-- 功能: 静态文件服务、API代理
-- 配置文件: `law_backend_flask/nginx/nginx.conf`
-
-### Flask (后端应用)
-- 端口: 5000 (内部)
-- 功能: API服务、业务逻辑
-- WSGI服务器: Gunicorn + Gevent
-
-### MySQL (数据库)
-- 端口: 3306
-- 功能: 用户数据、文件元数据存储
-- 数据卷: `mysql_data`
-
-### MinIO (对象存储)
-- 端口: 9000 (API), 9001 (控制台)
-- 功能: 文件存储
-- 数据卷: `minio_data`
-
-### Redis (缓存)
-- 端口: 6379
-- 功能: 会话缓存、临时数据
-- 数据卷: `redis_data`
-
-## 生产环境配置
-
-### 1. 安全配置
-
-#### 修改默认密码
-编辑 `law_backend_flask/.env` 文件:
 ```env
-# 数据库密码
-MYSQL_ROOT_PASSWORD=your-strong-root-password
-MYSQL_PASSWORD=your-strong-user-password
-
-# MinIO密钥
-MINIO_ACCESS_KEY=your-minio-access-key
-MINIO_SECRET_KEY=your-strong-minio-secret-key
-
-# 应用密钥
-SECRET_KEY=your-32-char-secret-key
-JWT_SECRET_KEY=your-32-char-jwt-secret-key
+BACKEND_HOST=127.0.0.1
+BACKEND_PORT=5000
+FRONTEND_HOST=127.0.0.1
+FRONTEND_PORT=13000
+DEV_DATABASE_URL=sqlite:///law_backend_flask/data/raglex-dev.sqlite3
+MINIO_DISABLED=true
+OPENAI_COMPAT_BASE_URL=http://127.0.0.1:11434/v1
+OPENAI_COMPAT_API_KEY=ollama
+OPENAI_CHAT_MODEL=qwen2.5:7b
 ```
 
-#### SSL证书配置
-1. 将SSL证书文件放置在 `law_backend_flask/nginx/ssl/` 目录
-2. 修改 `nginx.conf` 添加HTTPS配置:
-```nginx
-server {
-    listen 443 ssl;
-    ssl_certificate /etc/nginx/ssl/cert.pem;
-    ssl_certificate_key /etc/nginx/ssl/key.pem;
-    # ... 其他配置
-}
-```
+说明：
 
-### 2. 性能优化
+- `DEV_DATABASE_URL=sqlite:///law_backend_flask/data/raglex-dev.sqlite3` 这类相对 SQLite 路径会由仓库脚本自动转换为绝对路径
+- `.env.local` 不应提交到 GitHub
 
-#### Gunicorn配置
-编辑 `law_backend_flask/gunicorn.conf.py`:
-```python
-# 根据CPU核心数调整工作进程
-workers = multiprocessing.cpu_count() * 2 + 1
+### 关键变量说明
 
-# 生产环境建议使用gevent
-worker_class = 'gevent'
-worker_connections = 1000
-```
+| 变量 | 说明 |
+|---|---|
+| `BACKEND_HOST` | 后端监听地址 |
+| `BACKEND_PORT` | 后端端口 |
+| `FRONTEND_HOST` | 前端监听地址 |
+| `FRONTEND_PORT` | 前端端口 |
+| `DEV_DATABASE_URL` | 开发环境 SQLite 地址 |
+| `MINIO_DISABLED` | `true` 时不连接 MinIO，自动改用本地文件存储 |
+| `OPENAI_COMPAT_BASE_URL` | OpenAI-compatible 接口地址 |
+| `OPENAI_COMPAT_API_KEY` | OpenAI-compatible 接口密钥 |
+| `OPENAI_CHAT_MODEL` | 默认使用的生成模型 |
+| `VITE_PROXY_TARGET` | 前端 dev server 代理的后端地址 |
+| `VITE_API_BASE_URL` | 前端部署到独立域名时可显式指定 API Base |
 
-#### 数据库优化
-编辑 `docker-compose.yml` 中MySQL配置:
-```yaml
-command: >
-  --default-authentication-plugin=mysql_native_password
-  --innodb-buffer-pool-size=1G
-  --max-connections=200
-```
+## 4. 模型部署
 
-### 3. 监控和日志
+### 4.1 使用 Ollama
 
-#### 查看服务状态
+安装 Ollama：
+
+- 官方下载：<https://ollama.com/download>
+- OpenAI-compatible 文档：<https://ollama.com/blog/openai-compatibility>
+- Qwen2.5 模型页：<https://ollama.com/library/qwen2.5>
+
+启动服务：
+
 ```bash
-docker-compose ps
-docker-compose logs -f
+ollama serve
 ```
 
-#### 查看特定服务日志
+拉取模型：
+
 ```bash
-docker-compose logs -f flask_app
-docker-compose logs -f nginx
-docker-compose logs -f mysql
+./scripts/pull_ollama_model.sh
 ```
 
-#### 健康检查
+默认拉取：
+
+```text
+qwen2.5:7b
+```
+
+如果机器资源有限：
+
 ```bash
-curl http://localhost/health
+OLLAMA_MODEL=qwen2.5:3b ./scripts/pull_ollama_model.sh
 ```
 
-## 维护操作
+然后把 `.env.local` 改为：
 
-### 备份数据
+```env
+OPENAI_CHAT_MODEL=qwen2.5:3b
+```
+
+### 4.2 使用外部 OpenAI-compatible 服务
+
+例如：
+
+- vLLM
+- LM Studio
+- OneAPI
+- 官方 OpenAI
+- 云厂商兼容网关
+
+只要改 `.env.local`：
+
+```env
+OPENAI_COMPAT_BASE_URL=https://your-endpoint.example.com/v1
+OPENAI_COMPAT_API_KEY=your-api-key
+OPENAI_CHAT_MODEL=your-model-name
+```
+
+## 5. 一键启动
+
 ```bash
-# 备份MySQL数据
-docker-compose exec mysql mysqldump -u root -p raglex_law > backup.sql
-
-# 备份MinIO数据
-docker-compose exec minio mc mirror /data /backup
+./deploy.sh
 ```
 
-### 更新应用
+实际执行逻辑：
+
+1. 创建或复用 `.venv`
+2. 安装后端依赖
+3. 安装前端依赖（如果缺失）
+4. 启动 Flask
+5. 启动 Vite
+6. 等待前后端 ready
+
+启动后：
+
+- 前端：`http://127.0.0.1:13000`
+- 后端：`http://127.0.0.1:5000`
+- 健康检查：`http://127.0.0.1:5000/api/health`
+
+## 6. 服务管理
+
+### 启动
+
 ```bash
-# 拉取最新代码
-git pull
-
-# 重新构建前端
-cd law_front
-npm run build
-cd ..
-
-# 重新构建并启动服务
-cd law_backend_flask
-docker-compose up --build -d
+./scripts/start_local.sh
 ```
 
-### 扩容
+### 停止
+
 ```bash
-# 增加Flask应用实例
-docker-compose up --scale flask_app=3 -d
+./scripts/stop_local.sh
 ```
 
-## 故障排除
+### 查看状态
 
-### 常见问题
-
-1. **服务启动失败**
-   - 检查端口是否被占用
-   - 检查Docker和Docker Compose版本
-   - 查看服务日志: `docker-compose logs`
-
-2. **数据库连接失败**
-   - 检查数据库密码配置
-   - 确认MySQL服务已启动
-   - 检查网络连接: `docker-compose exec flask_app ping mysql`
-
-3. **文件上传失败**
-   - 检查MinIO服务状态
-   - 验证MinIO访问密钥
-   - 检查存储空间
-
-4. **前端页面无法访问**
-   - 检查Nginx配置
-   - 确认前端构建成功
-   - 检查静态文件路径
-
-### 调试模式
 ```bash
-# 启用调试模式
-export FLASK_ENV=development
-docker-compose up
+./scripts/status_local.sh
 ```
 
-## 性能基准
+### 查看日志
 
-### 推荐配置
-- 生产环境: 4核8GB内存
-- 并发用户: 100+
-- 响应时间: <200ms
-- 文件上传: 支持100MB以下文件
+```bash
+tail -f .logs/backend.log
+tail -f .logs/frontend.log
+```
 
-### 监控指标
-- CPU使用率 < 70%
-- 内存使用率 < 80%
-- 磁盘使用率 < 85%
-- 数据库连接数 < 150
+## 7. 一键回归
 
-## 联系支持
+```bash
+./scripts/smoke_local.sh
+```
 
-如遇到部署问题，请提供以下信息:
-1. 操作系统版本
-2. Docker版本
-3. 错误日志
-4. 服务状态: `docker-compose ps`
+这个脚本会：
+
+1. 启动前后端
+2. 检查 `/api/health`
+3. 构建前端生产包
+4. 跑完整接口级 e2e smoke
+
+当前 smoke 已覆盖：
+
+- 注册 / 登录
+- 会话创建
+- 文件上传 / 下载
+- 私有知识库上传 / 检索
+- 公有知识库上传 / 检索
+- 取消公有知识库后立即失效
+- 会话历史落库
+
+如果当前端口上已经有健康的 RAGLEX 后端实例，`smoke_local.sh` 会直接复用它，不会在结束时主动停掉现有服务。
+
+如果失败，请先检查：
+
+- `OPENAI_COMPAT_BASE_URL` 是否可访问
+- 模型是否已下载
+- `OPENAI_CHAT_MODEL` 是否存在
+
+## 8. 远程服务器部署
+
+如果你要把服务暴露给局域网或公网用户：
+
+### 8.1 修改监听地址
+
+在 `.env.local` 中改成：
+
+```env
+BACKEND_HOST=0.0.0.0
+FRONTEND_HOST=0.0.0.0
+```
+
+### 8.2 建议反向代理
+
+推荐：
+
+- Nginx
+- Caddy
+
+建议做法：
+
+- 前端静态构建产物由 Nginx 托管
+- `/api` 反代到 Flask
+- HTTPS 终止在代理层
+
+### 8.3 systemd 托管示例
+
+可以为 `start_local.sh` 做一个 systemd service：
+
+```ini
+[Unit]
+Description=RAGLEX
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/RAGLEX
+ExecStart=/opt/RAGLEX/scripts/start_local.sh
+ExecStop=/opt/RAGLEX/scripts/stop_local.sh
+Restart=always
+User=www-data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+如果你要更严格地管理两个进程，建议拆成两个 unit：
+
+- `raglex-backend.service`
+- `raglex-frontend.service`
+
+## 9. 数据与备份
+
+默认需要备份的目录：
+
+- `law_backend_flask/data/`
+- `.env.local`
+
+其中：
+
+- `law_backend_flask/data/raglex-dev.sqlite3`：用户、文件、会话、知识切片
+- `law_backend_flask/data/local_object_store/`：上传的原始文件
+
+## 10. MinIO / MySQL 何时需要
+
+默认本地部署不需要。
+
+只有在你明确要这些能力时再开启：
+
+- 用 MySQL 替换 SQLite
+- 用 MinIO 替换本地对象存储
+
+本仓库当前实现已经支持：
+
+- MinIO 不可用时自动退回本地存储
+- SQLite 即可完成完整链路
+
+## 11. 旧版 `RAGLEX-main` 的定位
+
+`RAGLEX-main/` 是历史上保留下来的独立 FastAPI RAG 实验目录。
+
+当前默认部署：
+
+- 不依赖它
+- 不要求启动它
+- 不要求下载它的 embedding / reranker 模型
+
+如果你要研究旧版完整向量链路，可以单独进入该目录做二次开发，但这不属于当前推荐部署路径。
+
+## 12. 故障排查
+
+### 12.1 启动后问答失败
+
+优先检查模型端点：
+
+```bash
+curl http://127.0.0.1:11434/v1/models
+```
+
+如果失败，说明 Ollama 没启动或模型端点未配置好。
+
+### 12.2 上传文件失败
+
+检查：
+
+- `law_backend_flask/data/` 是否可写
+- 磁盘空间是否足够
+
+### 12.3 前端打不开
+
+检查：
+
+```bash
+./scripts/status_local.sh
+tail -f .logs/frontend.log
+```
+
+如果 `./scripts/start_local.sh` 直接报端口占用，说明 `BACKEND_PORT` 或 `FRONTEND_PORT` 已被别的进程占用。请先释放端口，或在 `.env.local` 中改用新的端口号。
+
+### 12.4 健康检查不通过
+
+检查：
+
+```bash
+curl http://127.0.0.1:5000/api/health
+```
+
+如果 `database=healthy` 且 `minio=disabled/local/healthy`，则服务可用。

@@ -207,8 +207,8 @@ def health_check():
         current_app.logger.error(f"MinIO健康检查失败: {str(e)}")
         minio_status = 'unhealthy'
 
-    # 系统状态：MinIO disabled 视作可用（本地最小启动不依赖 MinIO）
-    minio_ok = minio_status in {'healthy', 'disabled'}
+    # 系统状态：MinIO disabled/local 均视作可用（本地最小启动不依赖 MinIO）
+    minio_ok = minio_status in {'healthy', 'disabled', 'local'}
     overall_status = 'healthy' if db_status == 'healthy' and minio_ok else 'unhealthy'
     
     health_info = {

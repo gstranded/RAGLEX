@@ -1,43 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common_env.sh"
 
-echo "== backend (python) =="
-./scripts/bootstrap_python.sh
+STARTED_LOCAL="false"
+BACKEND_HEALTH_URL="http://127.0.0.1:${BACKEND_PORT}/api/health"
+FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}/"
 
-PORT="${PORT:-5000}"
-export PORT
+cleanup() {
+  if [ "${STARTED_LOCAL}" = "true" ]; then
+    "${ROOT_DIR}/scripts/stop_local.sh" >/dev/null 2>&1 || true
+  fi
+}
 
-LOG="$(mktemp)"
-(
-  ./scripts/run_backend_sqlite.sh >"${LOG}" 2>&1 &
-  PID=$!
+trap cleanup EXIT
 
-  for i in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
+echo "== bootstrap =="
+"${ROOT_DIR}/scripts/bootstrap_python.sh"
 
-  echo "[smoke] /api/health:";
-  curl -fsS "http://127.0.0.1:${PORT}/api/health"; echo
+if curl -fsS "${BACKEND_HEALTH_URL}" >/dev/null 2>&1; then
+  echo "== reuse running backend =="
+  echo "[smoke] backend already healthy: ${BACKEND_HEALTH_URL}"
+  if curl -fsS "${FRONTEND_URL}" >/dev/null 2>&1; then
+    echo "[smoke] frontend already reachable: ${FRONTEND_URL}"
+  else
+    echo "[smoke] frontend dev server not detected at ${FRONTEND_URL}; continuing with backend smoke + production build"
+  fi
+else
+  echo "== start local services =="
+  STARTED_LOCAL="true"
+  "${ROOT_DIR}/scripts/start_local.sh"
+fi
 
-  kill "$PID" 2>/dev/null || true
-  wait "$PID" 2>/dev/null || true
-)
+echo "== backend health =="
+curl -fsS "${BACKEND_HEALTH_URL}"
+echo
 
-echo "--- backend log tail ---"
-tail -n 80 "${LOG}" || true
+echo "== frontend production build =="
+(cd "${FRONTEND_DIR}" && npm run build)
 
-echo "== frontend (node) =="
-(
-  cd "${ROOT_DIR}/law_front"
-  # Clean install to avoid reusing any existing node_modules (if present).
-  rm -rf node_modules
-  npm install
-  npm run build
-)
+echo "== end-to-end smoke =="
+RAGLEX_BASE_URL="http://127.0.0.1:${BACKEND_PORT}" \
+  "${VENV_DIR}/bin/python" "${ROOT_DIR}/scripts/e2e_smoke.py"
 
 echo "[smoke] OK"

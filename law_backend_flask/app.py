@@ -90,15 +90,15 @@ def register_basic_routes(app):
                     'profile': '/api/auth/profile'
                 },
 
-                'documents': '/api/documents',
+                'documents': '/api/files',
                 'qa': {
-                    'query': '/api/qa/query',
-                    'history': '/api/qa/history'
+                    'query': '/api/query',
+                    'history': '/api/conversations/'
                 },
                 'system': {
-                    'config': '/api/system/config',
-                    'stats': '/api/system/stats',
-                    'health': '/api/system/health'
+                    'config': '/api/config',
+                    'stats': '/api/stats',
+                    'health': '/api/health'
                 }
             }
         })

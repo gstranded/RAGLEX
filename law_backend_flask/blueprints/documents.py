@@ -14,9 +14,42 @@ from models import db, UserFile
 from utils.auth import login_required, sanitize_input, log_user_activity
 from utils.minio_client import upload_file, get_file_url
 from utils import download_file, delete_file_from_minio
-import requests
+from utils.knowledge_base import (
+    index_user_file_to_knowledge,
+    remove_user_file_from_knowledge
+)
 
 documents_bp = Blueprint('documents', __name__)
+
+
+def sync_file_to_local_knowledge(current_user, user_file, knowledge_types):
+    """将文件同步到本地知识库。"""
+    try:
+        result = index_user_file_to_knowledge(user_file, current_user, knowledge_types)
+        return True, '', result
+    except Exception as exc:
+        current_app.logger.error(
+            "本地知识库上传失败: user_id=%s file_id=%s error=%s",
+            current_user.id,
+            user_file.id,
+            str(exc)
+        )
+        return False, str(exc), None
+
+
+def remove_file_from_local_knowledge(user_file, knowledge_types):
+    """从本地知识库中移除文件。"""
+    try:
+        deleted_count = remove_user_file_from_knowledge(user_file.id, knowledge_types)
+        return True, '', deleted_count
+    except Exception as exc:
+        current_app.logger.error(
+            "本地知识库删除失败: file_id=%s knowledge_types=%s error=%s",
+            user_file.id,
+            knowledge_types,
+            str(exc)
+        )
+        return False, str(exc), 0
 
 def allowed_file(filename):
     """检查文件扩展名是否允许"""
@@ -351,34 +384,19 @@ def delete_user_file(current_user, file_id):
         if user_file.private_knowledge_uploaded:
             knowledge_types_to_delete.append('private')
         
-        # 如果文件已上传到知识库，先从远程服务器删除
+        # 如果文件已上传到知识库，先从本地知识库删除
         if knowledge_types_to_delete:
-            try:
-                payload = {
-                    "user_id": current_user.id,
-                    "username": current_user.username,
-                    "file_path": user_file.minio_path,
-                    "filename": user_file.filename,
-                    "file_category": user_file.file_category,
-                    "knowledge_types": knowledge_types_to_delete,
-                    "file_id": user_file.id,
-                    "action": "cancel"  # 标识这是取消操作
-                }
-                
-                response = requests.post(
-                    "http://192.168.240.3:10086/api/receive-knowledge",
-                    json=payload,
-                    timeout=10
+            removed_success, removed_error, _ = remove_file_from_local_knowledge(
+                user_file,
+                knowledge_types_to_delete
+            )
+            if removed_success:
+                current_app.logger.info(
+                    f"成功从本地知识库删除文件({knowledge_types_to_delete}): {user_file.filename}"
                 )
-                
-                if response.status_code == 200:
-                    current_app.logger.info(f"成功从远程服务器删除文件({knowledge_types_to_delete}): {user_file.filename}")
-                else:
-                    current_app.logger.warning(f"从远程服务器删除文件失败: {response.status_code}")
-                    
-            except requests.exceptions.RequestException as e:
-                current_app.logger.warning(f"发送删除请求到远程服务器时出错: {str(e)}")
-                # 继续删除本地文件，即使远程删除失败
+            else:
+                current_app.logger.warning(f"从本地知识库删除文件失败: {removed_error}")
+                # 继续删除文件记录，即使知识库删除失败
         
         # 从MinIO删除文件
         try:
@@ -514,41 +532,11 @@ def upload_to_knowledge(current_user, file_id):
         print(f"文件分类: {user_file.file_category}")
         print(f"知识库类型: {type(types_to_upload)}")
         
-        # 发送到远程服务器（一次性发送所有知识库类型）
-        upload_success = False
-        error_message = ""
-        
-        try:
-            payload = {
-                "user_id": current_user.id,
-                "username": current_user.username,
-                "file_path": user_file.minio_path,
-                "filename": user_file.filename,
-                "file_category": user_file.file_category,
-                "knowledge_types": types_to_upload,  # 发送所有类型
-                "file_id": user_file.id,
-                "action":"add"
-            }
-            
-            response = requests.post(
-                "http://192.168.240.3:10086/api/receive-knowledge",
-                json=payload,
-                timeout=20
-            )
-            
-            if response.status_code == 200:
-                print(f"成功发送到远程服务器({types_to_upload}): {response.json()}")
-                upload_success = True
-            else:
-                print(f"发送到远程服务器失败: {response.status_code}")
-                if response.status_code == 422:
-                    error_message = "数据格式错误，请检查远程服务器配置"
-                else:
-                    error_message = f"远程服务器返回错误: {response.status_code}"
-                
-        except requests.exceptions.RequestException as e:
-            print(f"发送到远程服务器时出错: {str(e)}")
-            error_message = f"网络连接错误: {str(e)}"
+        upload_success, error_message, result = sync_file_to_local_knowledge(
+            current_user,
+            user_file,
+            types_to_upload
+        )
         
         # 只有在远程上传成功时才更新数据库状态
         if not upload_success:
@@ -592,7 +580,10 @@ def upload_to_knowledge(current_user, file_id):
         return jsonify({
             'success': True,
             'message': f'文件已成功上传到{knowledge_names}',
-            'data': user_file.to_dict()
+            'data': {
+                **user_file.to_dict(),
+                'indexed_chunks': (result or {}).get('chunk_count', 0)
+            }
         }), 200
         
     except Exception as e:
@@ -660,43 +651,10 @@ def cancel_knowledge_upload(current_user, file_id):
         print(f"文件名: {user_file.filename}")
         print(f"取消知识库类型: {types_to_cancel}")
         
-        # 发送取消请求到远程服务器
-        cancel_success = False
-        error_message = ""
-        
-        try:
-            payload = {
-                "user_id": current_user.id,
-                "username": current_user.username,
-                "file_path": user_file.minio_path,
-                "filename": user_file.filename,
-                "file_category": user_file.file_category,
-                "knowledge_types": types_to_cancel,
-                "file_id": user_file.id,
-                "action": "cancel"  # 标识这是取消操作
-            }
-            
-            response = requests.post(
-                "http://192.168.240.3:10086/api/receive-knowledge",
-                json=payload,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                print(f"成功发送取消请求到远程服务器({types_to_cancel}): {response.json()}")
-                cancel_success = True
-            else:
-                print(f"发送取消请求到远程服务器失败: {response.status_code}")
-                if response.status_code == 422:
-                    error_message = "数据格式错误，请检查远程服务器配置"
-                elif response.status_code == 404:
-                    error_message = "远程服务器不支持取消操作"
-                else:
-                    error_message = f"远程服务器返回错误: {response.status_code}"
-                
-        except requests.exceptions.RequestException as e:
-            print(f"发送取消请求到远程服务器时出错: {str(e)}")
-            error_message = f"网络连接错误: {str(e)}"
+        cancel_success, error_message, _ = remove_file_from_local_knowledge(
+            user_file,
+            types_to_cancel
+        )
         
         # 只有在远程取消成功时才更新数据库状态
         if not cancel_success:
@@ -839,39 +797,11 @@ def batch_upload_to_knowledge(current_user):
                     results['failed_count'] += 1
                     continue
                 
-                # 构建发送到远程服务器的数据
-                payload = {
-                    'user_id': current_user.id,
-                    'username': current_user.username,
-                    'file_path': user_file.minio_path,
-                    'filename': user_file.filename,
-                    'file_category': user_file.file_category,
-                    'knowledge_types': types_to_upload,
-                    'file_id': user_file.id,
-                    'action': 'add'
-                }
-                
-                # 发送到远程服务器
-                upload_success = False
-                error_message = ""
-                
-                try:
-                    response = requests.post(
-                        'http://192.168.240.3:10086/api/receive-knowledge',
-                        json=payload,
-                        timeout=30
-                    )
-                    
-                    if response.status_code == 200:
-                        upload_success = True
-                    else:
-                        if response.status_code == 422:
-                            error_message = "数据格式错误"
-                        else:
-                            error_message = f"远程服务器错误: {response.status_code}"
-                        
-                except requests.exceptions.RequestException as e:
-                    error_message = f"网络连接错误: {str(e)}"
+                upload_success, error_message, _ = sync_file_to_local_knowledge(
+                    current_user,
+                    user_file,
+                    types_to_upload
+                )
                 
                 # 处理上传结果
                 if upload_success:
@@ -1141,39 +1071,11 @@ def batch_upload_to_knowledge_with_progress(current_user):
                             if not types_to_upload:
                                 continue
                         
-                        # 构建发送到远程服务器的数据
-                        payload = {
-                            'user_id': current_user.id,
-                            'username': current_user.username,
-                            'file_path': user_file.minio_path,
-                            'filename': user_file.filename,
-                            'file_category': user_file.file_category,
-                            'knowledge_types': types_to_upload,
-                            'file_id': user_file.id,
-                            'action': 'add'
-                        }
-                        
-                        # 发送到远程服务器
-                        upload_success = False
-                        error_message = ""
-                        
-                        try:
-                            response = requests.post(
-                                'http://192.168.240.3:10086/api/receive-knowledge',
-                                json=payload,
-                                timeout=30
-                            )
-                            
-                            if response.status_code == 200:
-                                upload_success = True
-                            else:
-                                if response.status_code == 422:
-                                    error_message = "数据格式错误"
-                                else:
-                                    error_message = f"远程服务器错误: {response.status_code}"
-                                
-                        except requests.exceptions.RequestException as e:
-                            error_message = f"网络连接错误: {str(e)}"
+                        upload_success, error_message, _ = sync_file_to_local_knowledge(
+                            current_user,
+                            user_file,
+                            types_to_upload
+                        )
                         
                         # 处理上传结果
                         if upload_success:

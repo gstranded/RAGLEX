@@ -98,6 +98,56 @@ class UserFile(db.Model):
     def __repr__(self):
         return f'<UserFile {self.filename}>'
 
+
+class KnowledgeChunk(db.Model):
+    """本地知识库切片模型"""
+    __tablename__ = 'knowledge_chunks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_file_id = db.Column(db.Integer, db.ForeignKey('user_files.id'), nullable=False, index=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    knowledge_type = db.Column(db.String(20), nullable=False, index=True)  # public / private
+    filename = db.Column(db.String(255), nullable=False)
+    file_category = db.Column(db.String(50), nullable=True)
+    chunk_index = db.Column(db.Integer, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    content_preview = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user_file = db.relationship(
+        'UserFile',
+        backref=db.backref('knowledge_chunks', lazy='dynamic', cascade='all, delete-orphan')
+    )
+    owner = db.relationship(
+        'User',
+        backref=db.backref('knowledge_chunks', lazy='dynamic')
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'user_file_id',
+            'knowledge_type',
+            'chunk_index',
+            name='uq_knowledge_chunk_file_type_index'
+        ),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_file_id': self.user_file_id,
+            'owner_user_id': self.owner_user_id,
+            'knowledge_type': self.knowledge_type,
+            'filename': self.filename,
+            'file_category': self.file_category,
+            'chunk_index': self.chunk_index,
+            'content_preview': self.content_preview,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+    def __repr__(self):
+        return f'<KnowledgeChunk {self.user_file_id}:{self.knowledge_type}:{self.chunk_index}>'
+
 class SystemConfig(db.Model):
     """系统配置模型"""
     __tablename__ = 'system_config'

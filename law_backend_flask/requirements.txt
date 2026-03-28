@@ -12,6 +12,8 @@ minio==7.1.17
 cryptography==41.0.7
 PyJWT==2.8.0
 gunicorn==21.2.0
-gevent==23.9.1
+gevent==24.11.1
 requests==2.32.3
 psutil==6.1.0
+pypdf==6.9.2
+python-docx==1.2.0

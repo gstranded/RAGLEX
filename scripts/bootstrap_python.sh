@@ -8,14 +8,41 @@ set -euo pipefail
 #   3) Create repo-local venv (.venv/) using virtualenv (does not require python3-venv)
 #   4) Install backend requirements into that venv
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_DIR="${ROOT_DIR}/law_backend_flask"
-VENV_DIR="${VENV_DIR:-${ROOT_DIR}/.venv}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common_env.sh"
+
+pick_python() {
+  if [ -n "${PYTHON_BIN:-}" ]; then
+    echo "${PYTHON_BIN}"
+    return 0
+  fi
+
+  for candidate in python3.10 python3.11 python3.12 python3; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+PYTHON_BIN="$(pick_python || true)"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "[bootstrap] ERROR: ${PYTHON_BIN} not found" >&2
   exit 2
+fi
+
+if [ -x "${VENV_DIR}/bin/python" ] && [ "${FORCE_RECREATE_VENV:-false}" != "true" ]; then
+  echo "[bootstrap] Reusing existing venv: ${VENV_DIR}"
+  "${VENV_DIR}/bin/pip" install -r "${BACKEND_DIR}/requirements.txt"
+  cat <<EOF
+[bootstrap] OK
+- python: $("${VENV_DIR}/bin/python" --version 2>&1)
+- venv: ${VENV_DIR}
+- backend deps refreshed
+EOF
+  exit 0
 fi
 
 if ! "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
@@ -30,6 +57,7 @@ fi
 "${PYTHON_BIN}" -m pip install --user "virtualenv>=20.26.0"
 
 # Create venv (repo-local)
+"${PYTHON_BIN}" --version
 "${PYTHON_BIN}" -m virtualenv "${VENV_DIR}"
 
 # Install backend deps

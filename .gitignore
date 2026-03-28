@@ -62,6 +62,7 @@ db.sqlite3
 db.sqlite3-journal
 # RAGLEX local dev SQLite DBs
 law_backend_flask/data/*.sqlite3*
+law_backend_flask/data/local_object_store/
 
 # Flask stuff:
 instance/
@@ -138,6 +139,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -207,3 +209,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local runtime artifacts
+.logs/
+.run/
+
+# Frontend build artifacts and dependencies
+law_front/node_modules/
+law_front/dist/
