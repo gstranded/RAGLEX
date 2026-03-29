@@ -39,6 +39,7 @@ http://127.0.0.1:13000
 
 ```bash
 ./scripts/smoke_local.sh
+./scripts/regression_local.sh
 ```
 
 ## 如果系统里没有 venv / pip
@@ -97,9 +98,19 @@ OPENAI_CHAT_MODEL=your-model-name
 
 ```bash
 ./scripts/smoke_local.sh
+./scripts/regression_local.sh
 ```
 
 如果后端已经启动，`smoke_local.sh` 会复用当前实例；如果没有启动，它会自行拉起并在结束后自动清理。
+
+`regression_local.sh` 会在 `smoke_local.sh` 的基础上继续验证：
+
+- 批量文件上传
+- 公转私 / 私转公知识库切换
+- 批量知识库上传与进度接口
+- 批量删除后的知识清理
+- 联网搜索问答
+- 对话接口权限
 
 ### 日志
 
@@ -123,6 +134,8 @@ tail -f .logs/frontend.log
 ```bash
 curl http://127.0.0.1:11434/v1/models
 ```
+
+如果模型暂时不可用，当前版本在“知识库问答”或“联网搜索问答”场景下，仍会尽量回退为资料片段直出，不会直接整条链路失败。
 
 ### 3. 文件上传失败
 

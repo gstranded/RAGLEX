@@ -17,3 +17,4 @@ requests==2.32.3
 psutil==6.1.0
 pypdf==6.9.2
 python-docx==1.2.0
+beautifulsoup4==4.13.3

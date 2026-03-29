@@ -9,6 +9,11 @@ from datetime import datetime
 from models import db
 from utils.auth import login_required, sanitize_input
 from utils.knowledge_base import search_knowledge_chunks, format_knowledge_context
+from utils.web_search import (
+    format_web_search_context,
+    is_web_search_requested,
+    search_web
+)
 import requests
 import os
 
@@ -155,8 +160,8 @@ def call_llm_fallback(question, recent_messages, mode, requested_model=None):
     )
 
 
-def build_knowledge_messages(question, recent_messages, mode, knowledge_results):
-    """构造带知识库上下文的模型消息。"""
+def build_knowledge_messages(question, recent_messages, mode, knowledge_results, web_results=None):
+    """构造带知识库和联网搜索上下文的模型消息。"""
     mode_descriptions = {
         'shared_knowledge': '公有知识库',
         'private_knowledge': '私有知识库',
@@ -165,22 +170,30 @@ def build_knowledge_messages(question, recent_messages, mode, knowledge_results)
     }
     mode_label = mode_descriptions.get(mode, '知识库')
     knowledge_context = format_knowledge_context(knowledge_results)
+    web_context = format_web_search_context(web_results or [])
 
     system_prompt = (
         "你是 RAGLEX 法律问答助手。\n"
         f"当前请优先参考提供的{mode_label}检索片段回答问题。\n"
         "请遵守以下要求：\n"
         "1. 先基于检索片段作答，不要编造未提供的案件事实或法条内容。\n"
-        "2. 如果检索片段不足以支撑确定结论，要明确说明资料不足，再给出一般性分析。\n"
-        "3. 使用中文，结论清晰，法律建议保持审慎，并说明不构成正式法律意见。\n"
-        "4. 若引用了检索片段，请在句末用“来源：[资料编号] 文件名”简要标注。\n"
-        "5. 不要提到内部接口、网络错误或系统实现细节。"
+        "2. 如果同时提供了联网搜索结果，可将其作为补充参考，但不能覆盖已检索到的知识库事实。\n"
+        "3. 如果检索片段不足以支撑确定结论，要明确说明资料不足，再给出一般性分析。\n"
+        "4. 使用中文，结论清晰，法律建议保持审慎，并说明不构成正式法律意见。\n"
+        "5. 若引用了检索片段，请在句末用“来源：[资料编号] 文件名”简要标注。\n"
+        "6. 若引用了联网搜索结果，请在句末用“来源：[网页编号] 标题”简要标注。\n"
+        "7. 不要提到内部接口、网络错误或系统实现细节。"
     )
 
+    context_parts = []
+    if knowledge_context:
+        context_parts.append(f"以下是知识库检索结果：\n{knowledge_context}")
+    if web_context:
+        context_parts.append(f"以下是联网搜索结果：\n{web_context}")
+
     user_prompt = (
-        "以下是知识库检索结果：\n"
-        f"{knowledge_context}\n\n"
-        "请结合以上资料回答用户问题。\n"
+        "\n\n".join(context_parts)
+        + "\n\n请结合以上资料回答用户问题。\n"
         f"用户问题：{question}"
     )
 
@@ -190,20 +203,59 @@ def build_knowledge_messages(question, recent_messages, mode, knowledge_results)
     return messages
 
 
-def call_llm_with_knowledge(question, recent_messages, mode, knowledge_results, requested_model=None):
+def build_web_messages(question, recent_messages, web_results):
+    """构造仅基于联网搜索结果的模型消息。"""
+    web_context = format_web_search_context(web_results)
+
+    system_prompt = (
+        "你是 RAGLEX 法律问答助手。\n"
+        "当前没有直接提供知识库命中内容，请优先参考联网搜索结果回答。\n"
+        "请遵守以下要求：\n"
+        "1. 先基于提供的网页标题、摘要和链接作答，不要把搜索摘要当成已核实全文。\n"
+        "2. 如果搜索结果不足以支持确定结论，要明确说明信息不足。\n"
+        "3. 使用中文，结论清晰，法律问题要保持审慎，并说明不构成正式法律意见。\n"
+        "4. 若引用了搜索结果，请在句末用“来源：[网页编号] 标题”简要标注。\n"
+        "5. 不要提到内部接口、网络错误或系统实现细节。"
+    )
+
+    user_prompt = (
+        "以下是联网搜索结果：\n"
+        f"{web_context}\n\n"
+        "请结合以上结果回答用户问题。\n"
+        f"用户问题：{question}"
+    )
+
+    messages = [{'role': 'system', 'content': system_prompt}]
+    messages.extend(recent_messages)
+    messages.append({'role': 'user', 'content': user_prompt})
+    return messages
+
+
+def call_llm_with_knowledge(question, recent_messages, mode, knowledge_results, web_results=None, requested_model=None):
     return call_llm(
-        build_knowledge_messages(question, recent_messages, mode, knowledge_results),
+        build_knowledge_messages(
+            question,
+            recent_messages,
+            mode,
+            knowledge_results,
+            web_results=web_results
+        ),
         temperature=0.15,
         max_tokens=1000,
         requested_model=requested_model
     )
 
 
-def build_retrieval_only_answer(question, knowledge_results, max_excerpt_length=220):
-    """当模型不可用时，直接返回检索到的关键资料片段。"""
-    if not knowledge_results:
-        return ""
+def call_llm_with_web(question, recent_messages, web_results, requested_model=None):
+    return call_llm(
+        build_web_messages(question, recent_messages, web_results),
+        temperature=0.15,
+        max_tokens=900,
+        requested_model=requested_model
+    )
 
+
+def _build_knowledge_snippets(knowledge_results, max_excerpt_length=220):
     snippets = []
     for index, item in enumerate(knowledge_results[:3], start=1):
         content = str(item.get('content') or '').strip()
@@ -211,10 +263,50 @@ def build_retrieval_only_answer(question, knowledge_results, max_excerpt_length=
             continue
         if len(content) > max_excerpt_length:
             content = content[:max_excerpt_length].rstrip() + "..."
-        snippets.append(
-            f"[资料{index}] {item.get('filename')}\n{content}"
-        )
+        snippets.append(f"[资料{index}] {item.get('filename')}\n{content}")
+    return snippets
 
+
+def _build_web_snippets(web_results, max_excerpt_length=220):
+    snippets = []
+    for index, item in enumerate(web_results[:3], start=1):
+        snippet = str(item.get('snippet') or '').strip() or '搜索结果未提供摘要'
+        if len(snippet) > max_excerpt_length:
+            snippet = snippet[:max_excerpt_length].rstrip() + "..."
+        snippets.append(
+            f"[网页{index}] {item.get('title')}\n"
+            f"来源: {item.get('source')}\n"
+            f"链接: {item.get('link')}\n"
+            f"摘要: {snippet}"
+        )
+    return snippets
+
+
+def build_source_only_answer(knowledge_results=None, web_results=None):
+    """当模型不可用时，直接返回已获取到的知识与搜索片段。"""
+    sections = []
+
+    knowledge_snippets = _build_knowledge_snippets(knowledge_results or [])
+    if knowledge_snippets:
+        sections.append("知识库检索片段：\n" + "\n\n".join(knowledge_snippets))
+
+    web_snippets = _build_web_snippets(web_results or [])
+    if web_snippets:
+        sections.append("联网搜索结果：\n" + "\n\n".join(web_snippets))
+
+    if not sections:
+        return ""
+
+    return (
+        "当前先根据已获取到的资料返回相关内容：\n\n"
+        + "\n\n".join(sections)
+        + "\n\n以上内容基于知识库检索或联网搜索结果整理，不构成正式法律意见。"
+    )
+
+
+def build_retrieval_only_answer(question, knowledge_results, max_excerpt_length=220):
+    """当模型不可用时，直接返回检索到的关键资料片段。"""
+    snippets = _build_knowledge_snippets(knowledge_results, max_excerpt_length=max_excerpt_length)
     if not snippets:
         return ""
 
@@ -223,6 +315,43 @@ def build_retrieval_only_answer(question, knowledge_results, max_excerpt_length=
         + "\n\n".join(snippets)
         + "\n\n以上内容基于知识库检索结果整理，不构成正式法律意见。"
     )
+
+
+def build_web_only_answer(web_results, max_excerpt_length=220):
+    snippets = _build_web_snippets(web_results, max_excerpt_length=max_excerpt_length)
+    if not snippets:
+        return ""
+
+    return (
+        "当前先根据已获取到的联网搜索结果返回相关内容：\n\n"
+        + "\n\n".join(snippets)
+        + "\n\n以上内容基于联网搜索结果整理，不构成正式法律意见。"
+    )
+
+
+def build_response_sources(knowledge_results, web_results):
+    sources = [
+        {
+            'source_type': 'knowledge',
+            'filename': item.get('filename'),
+            'knowledge_type': item.get('knowledge_type'),
+            'chunk_index': item.get('chunk_index'),
+            'score': item.get('score')
+        }
+        for item in knowledge_results
+    ]
+    sources.extend([
+        {
+            'source_type': 'web',
+            'title': item.get('title'),
+            'link': item.get('link'),
+            'snippet': item.get('snippet'),
+            'provider': item.get('provider'),
+            'source': item.get('source')
+        }
+        for item in web_results
+    ])
+    return sources
 
 
 
@@ -289,9 +418,30 @@ def knowledge_query(current_user):
             current_app.logger.warning(f"对话 {conversation_id} 不存在或不属于用户 {current_user.id}")
 
         answer = ""
+        top_k_value = int(top_k) if top_k is not None else 3
+        web_requested = is_web_search_requested(web_search)
         knowledge_results = []
+        web_results = []
         remote_error_message = ""
         chat_service_url = get_chat_service_url()
+
+        if web_requested:
+            try:
+                web_results = search_web(question, top_k_value)
+                current_app.logger.info(
+                    "联网搜索完成: user_id=%s conversation_id=%s requested=%s hits=%s",
+                    current_user.id,
+                    conversation_id,
+                    web_search,
+                    len(web_results)
+                )
+            except Exception as e:
+                current_app.logger.warning(
+                    "联网搜索失败: user_id=%s conversation_id=%s error=%s",
+                    current_user.id,
+                    conversation_id,
+                    str(e)
+                )
 
         if mode in ('shared_knowledge', 'private_knowledge', 'entire_knowledge', 'knowledgeQA'):
             try:
@@ -299,14 +449,15 @@ def knowledge_query(current_user):
                     current_user.id,
                     question,
                     mode,
-                    int(top_k) if top_k is not None else 3
+                    top_k_value
                 )
-                if knowledge_results:
+                if knowledge_results or web_results:
                     current_app.logger.info(
-                        "本地知识库检索命中: user_id=%s conversation_id=%s hits=%s",
+                        "知识增强资料可用: user_id=%s conversation_id=%s knowledge_hits=%s web_hits=%s",
                         current_user.id,
                         conversation_id,
-                        len(knowledge_results)
+                        len(knowledge_results),
+                        len(web_results)
                     )
                     try:
                         answer = call_llm_with_knowledge(
@@ -314,25 +465,43 @@ def knowledge_query(current_user):
                             recent_messages,
                             mode,
                             knowledge_results,
+                            web_results=web_results,
                             requested_model=large_language_model
                         )
                     except Exception as e:
                         current_app.logger.warning(
-                            "知识库命中但模型生成失败，回退到检索片段直出: user_id=%s conversation_id=%s error=%s",
+                            "知识增强回答生成失败，回退到资料直出: user_id=%s conversation_id=%s error=%s",
                             current_user.id,
                             conversation_id,
                             str(e)
                         )
-                        answer = build_retrieval_only_answer(question, knowledge_results)
+                        answer = build_source_only_answer(knowledge_results, web_results)
                 else:
                     current_app.logger.info(
-                        "本地知识库未命中: user_id=%s conversation_id=%s mode=%s",
+                        "本地知识库与联网搜索均未命中: user_id=%s conversation_id=%s mode=%s",
                         current_user.id,
                         conversation_id,
                         mode
                     )
             except Exception as e:
                 current_app.logger.error(f"本地知识库检索失败: {str(e)}")
+
+        if not answer and web_results:
+            try:
+                answer = call_llm_with_web(
+                    question,
+                    recent_messages,
+                    web_results,
+                    requested_model=large_language_model
+                )
+            except Exception as e:
+                current_app.logger.warning(
+                    "联网搜索命中但模型生成失败，回退到搜索片段直出: user_id=%s conversation_id=%s error=%s",
+                    current_user.id,
+                    conversation_id,
+                    str(e)
+                )
+                answer = build_web_only_answer(web_results)
 
         if not answer and chat_service_url:
             try:
@@ -341,7 +510,7 @@ def knowledge_query(current_user):
                     'username': str(current_user.username),
                     'embedding_model': str(embedding_model),
                     'large_language_model': str(large_language_model),
-                    'top_k': int(top_k) if top_k is not None else 3,
+                    'top_k': top_k_value,
                     'web_search': str(web_search),
                     'mode': str(mode),
                     'question': str(question),
@@ -383,7 +552,7 @@ def knowledge_query(current_user):
                     current_app.logger.info("已回退到本地 OpenAI 兼容模型接口")
             except Exception as e:
                 current_app.logger.error(f"本地模型回退失败: {str(e)}")
-                answer = build_retrieval_only_answer(question, knowledge_results)
+                answer = build_source_only_answer(knowledge_results, web_results)
                 if not answer:
                     answer = "抱歉，当前问答服务暂时不可用，请稍后重试。"
 
@@ -407,15 +576,9 @@ def knowledge_query(current_user):
                 'question': question,
                 'answer': answer,
                 'conversation_id': conversation_id,
-                'sources': [
-                    {
-                        'filename': item.get('filename'),
-                        'knowledge_type': item.get('knowledge_type'),
-                        'chunk_index': item.get('chunk_index'),
-                        'score': item.get('score')
-                    }
-                    for item in knowledge_results
-                ]
+                'sources': build_response_sources(knowledge_results, web_results),
+                'web_search_used': web_requested,
+                'web_result_count': len(web_results)
             }
         }), 200
         

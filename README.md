@@ -11,6 +11,7 @@ RAGLEX 是一个面向法律场景的知识库问答系统，包含：
 - Flask 后端
 - 本地知识库上传、切片、检索
 - 公有 / 私有知识库隔离
+- 可选联网搜索增强
 - 会话历史持久化
 - 任意 OpenAI-compatible 模型接入
 
@@ -153,6 +154,21 @@ ollama serve
 - 取消公有知识库上传后检索失效
 - 会话历史是否落库
 
+如果你要跑更完整的链路回归，可以执行：
+
+```bash
+./scripts/regression_local.sh
+```
+
+它会额外覆盖：
+
+- 文件批量上传
+- 公转私 / 私转公知识库切换
+- 批量上传到知识库（含进度接口）
+- 批量删除文件后的知识清理
+- 对话权限校验
+- 联网搜索问答
+
 ## 模型说明
 
 ### 当前默认模型接入方式
@@ -218,7 +234,8 @@ OLLAMA_MODEL=qwen2.5:3b ./scripts/pull_ollama_model.sh
    - `使用私有知识库`
    - `使用整个知识库`
    - `不使用知识库`
-6. 提问并查看答案与来源
+6. 如需联网搜索补充，可把“网络搜索”切到 `使用`
+7. 提问并查看答案与来源
 
 ## 一键脚本
 
@@ -233,6 +250,7 @@ OLLAMA_MODEL=qwen2.5:3b ./scripts/pull_ollama_model.sh
 | `./scripts/status_local.sh` | 查看本地服务状态 |
 | `./scripts/pull_ollama_model.sh` | 拉取默认 Ollama 模型 |
 | `./scripts/smoke_local.sh` | 运行完整本地 smoke 测试 |
+| `./scripts/regression_local.sh` | 运行更完整的功能回归测试 |
 
 ## 常用命令
 
@@ -258,6 +276,7 @@ OLLAMA_MODEL=qwen2.5:3b ./scripts/pull_ollama_model.sh
 
 ```bash
 ./scripts/smoke_local.sh
+./scripts/regression_local.sh
 ```
 
 如果后端已经在当前端口健康运行，`smoke_local.sh` 会直接复用现有实例，不会在结束时把你的在线服务停掉。
