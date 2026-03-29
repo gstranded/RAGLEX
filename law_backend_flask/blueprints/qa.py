@@ -199,6 +199,32 @@ def call_llm_with_knowledge(question, recent_messages, mode, knowledge_results, 
     )
 
 
+def build_retrieval_only_answer(question, knowledge_results, max_excerpt_length=220):
+    """当模型不可用时，直接返回检索到的关键资料片段。"""
+    if not knowledge_results:
+        return ""
+
+    snippets = []
+    for index, item in enumerate(knowledge_results[:3], start=1):
+        content = str(item.get('content') or '').strip()
+        if not content:
+            continue
+        if len(content) > max_excerpt_length:
+            content = content[:max_excerpt_length].rstrip() + "..."
+        snippets.append(
+            f"[资料{index}] {item.get('filename')}\n{content}"
+        )
+
+    if not snippets:
+        return ""
+
+    return (
+        "当前先根据已检索到的资料返回相关内容：\n\n"
+        + "\n\n".join(snippets)
+        + "\n\n以上内容基于知识库检索结果整理，不构成正式法律意见。"
+    )
+
+
 
 @qa_bp.route('/query', methods=['POST'])
 @login_required
@@ -276,19 +302,28 @@ def knowledge_query(current_user):
                     int(top_k) if top_k is not None else 3
                 )
                 if knowledge_results:
-                    answer = call_llm_with_knowledge(
-                        question,
-                        recent_messages,
-                        mode,
-                        knowledge_results,
-                        requested_model=large_language_model
-                    )
                     current_app.logger.info(
                         "本地知识库检索命中: user_id=%s conversation_id=%s hits=%s",
                         current_user.id,
                         conversation_id,
                         len(knowledge_results)
                     )
+                    try:
+                        answer = call_llm_with_knowledge(
+                            question,
+                            recent_messages,
+                            mode,
+                            knowledge_results,
+                            requested_model=large_language_model
+                        )
+                    except Exception as e:
+                        current_app.logger.warning(
+                            "知识库命中但模型生成失败，回退到检索片段直出: user_id=%s conversation_id=%s error=%s",
+                            current_user.id,
+                            conversation_id,
+                            str(e)
+                        )
+                        answer = build_retrieval_only_answer(question, knowledge_results)
                 else:
                     current_app.logger.info(
                         "本地知识库未命中: user_id=%s conversation_id=%s mode=%s",
@@ -348,7 +383,9 @@ def knowledge_query(current_user):
                     current_app.logger.info("已回退到本地 OpenAI 兼容模型接口")
             except Exception as e:
                 current_app.logger.error(f"本地模型回退失败: {str(e)}")
-                answer = "抱歉，当前问答服务暂时不可用，请稍后重试。"
+                answer = build_retrieval_only_answer(question, knowledge_results)
+                if not answer:
+                    answer = "抱歉，当前问答服务暂时不可用，请稍后重试。"
 
         # 如果有对话ID且对话存在，也保存AI回复
         if conversation_id and conversation:
