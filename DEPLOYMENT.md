@@ -87,6 +87,7 @@ MINIO_DISABLED=true
 OPENAI_COMPAT_BASE_URL=http://127.0.0.1:11434/v1
 OPENAI_COMPAT_API_KEY=ollama
 OPENAI_CHAT_MODEL=qwen2.5:7b
+WEB_SEARCH_PROVIDER=sogou,bing_rss
 ```
 
 说明：
@@ -109,6 +110,8 @@ OPENAI_CHAT_MODEL=qwen2.5:7b
 | `OPENAI_CHAT_MODEL` | 默认使用的生成模型 |
 | `VITE_PROXY_TARGET` | 前端 dev server 代理的后端地址 |
 | `VITE_API_BASE_URL` | 前端部署到独立域名时可显式指定 API Base |
+| `WEB_SEARCH_PROVIDER` | 联网搜索提供方，默认 `sogou,bing_rss` |
+| `WEB_SEARCH_TIMEOUT_SECONDS` | 联网搜索超时秒数 |
 
 ## 4. 模型部署
 
@@ -220,6 +223,7 @@ tail -f .logs/frontend.log
 
 ```bash
 ./scripts/smoke_local.sh
+./scripts/regression_local.sh
 ```
 
 这个脚本会：
@@ -239,6 +243,15 @@ tail -f .logs/frontend.log
 - 取消公有知识库后立即失效
 - 会话历史落库
 
+`regression_local.sh` 会进一步覆盖：
+
+- 批量文件提交
+- 批量知识库上传
+- 公转私 / 私转公
+- 批量删除后的知识库清理
+- 联网搜索问答
+- 对话接口权限校验
+
 如果当前端口上已经有健康的 RAGLEX 后端实例，`smoke_local.sh` 会直接复用它，不会在结束时主动停掉现有服务。
 
 如果失败，请先检查：
@@ -246,6 +259,12 @@ tail -f .logs/frontend.log
 - `OPENAI_COMPAT_BASE_URL` 是否可访问
 - 模型是否已下载
 - `OPENAI_CHAT_MODEL` 是否存在
+- `WEB_SEARCH_PROVIDER` 对应的搜索出口是否可访问
+
+说明：
+
+- 即使本地 LLM 暂时不可用，知识库命中和联网搜索命中场景仍会回退为资料片段直出
+- 这能保证上传、检索、来源返回、知识库切换等主链路仍然可验证
 
 ## 8. 远程服务器部署
 

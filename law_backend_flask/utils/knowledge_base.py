@@ -27,6 +27,7 @@ from utils import download_file
 DEFAULT_CHUNK_SIZE = 900
 DEFAULT_CHUNK_OVERLAP = 120
 DEFAULT_MAX_CONTEXT_CHUNKS = 6
+DEFAULT_MIN_SEARCH_SCORE = 5.0
 
 
 def get_chunk_size() -> int:
@@ -48,6 +49,13 @@ def get_max_context_chunks() -> int:
         return max(1, int(os.environ.get('KNOWLEDGE_MAX_CONTEXT_CHUNKS', str(DEFAULT_MAX_CONTEXT_CHUNKS))))
     except ValueError:
         return DEFAULT_MAX_CONTEXT_CHUNKS
+
+
+def get_min_search_score() -> float:
+    try:
+        return max(0.0, float(os.environ.get('KNOWLEDGE_MIN_SEARCH_SCORE', str(DEFAULT_MIN_SEARCH_SCORE))))
+    except ValueError:
+        return DEFAULT_MIN_SEARCH_SCORE
 
 
 def normalize_knowledge_types(knowledge_types: Sequence[str] | None) -> List[str]:
@@ -301,10 +309,36 @@ def _build_ngrams(text: str, sizes: Sequence[int] = (2, 3)) -> set[str]:
     return ngrams
 
 
+def _extract_structured_tokens(text: str, min_length: int = 6) -> List[str]:
+    compact = _normalize_for_search(text)
+    seen = set()
+    tokens: List[str] = []
+
+    compound_pattern = r'[a-z0-9]+(?:[-_][a-z0-9]+)+'
+    for token in re.findall(compound_pattern, compact):
+        merged = token.replace('-', '').replace('_', '')
+        if len(merged) < min_length or merged in seen:
+            continue
+        seen.add(merged)
+        tokens.append(merged)
+
+    remaining = re.sub(compound_pattern, ' ', compact)
+    for token in re.findall(r'[a-z0-9_]{%s,}' % min_length, remaining):
+        token = token.replace('_', '')
+        if len(token) < min_length or token in seen:
+            continue
+        if token not in seen:
+            seen.add(token)
+            tokens.append(token)
+    return tokens
+
+
 def _score_chunk(question: str, content: str, title: str) -> float:
     question_compact = _normalize_for_search(question)
     content_compact = _normalize_for_search(content)
     title_compact = _normalize_for_search(title)
+    content_structured = re.sub(r'[^a-z0-9]+', '', content_compact)
+    title_structured = re.sub(r'[^a-z0-9]+', '', title_compact)
 
     if not question_compact or not content_compact:
         return 0.0
@@ -331,6 +365,18 @@ def _score_chunk(question: str, content: str, title: str) -> float:
         content_ngrams = _build_ngrams(content)
         overlap_ratio = len(question_ngrams & content_ngrams) / max(len(question_ngrams), 1)
         score += overlap_ratio * 20.0
+
+    structured_tokens = _extract_structured_tokens(question)
+    if structured_tokens:
+        exact_hits = sum(
+            1
+            for token in structured_tokens
+            if token in content_structured or token in title_structured
+        )
+        if exact_hits:
+            score += exact_hits * 14.0
+        else:
+            score *= 0.1
 
     return round(score, 4)
 
@@ -363,10 +409,11 @@ def search_knowledge_chunks(user_id: int, question: str, mode: str, top_k: int =
         return []
 
     limit = max(1, min(int(top_k or 3) * 2, get_max_context_chunks()))
+    min_score = get_min_search_score()
     scored_candidates = []
     for chunk in candidates:
         score = _score_chunk(question, chunk.content, chunk.filename)
-        if score > 0:
+        if score >= min_score:
             scored_candidates.append((score, chunk))
 
     if not scored_candidates:

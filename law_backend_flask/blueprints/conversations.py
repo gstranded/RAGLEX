@@ -178,15 +178,18 @@ def add_message(current_user, conversation_id):
         }), 500
 
 @conversations_bp.route('/<int:conversation_id>', methods=['DELETE'])
-def delete_conversation(conversation_id):
+@login_required
+def delete_conversation(current_user, conversation_id):
     """删除指定对话"""
     try:
-        # 验证对话是否存在
-        conversation = Conversation.query.get(conversation_id)
+        conversation = Conversation.query.filter_by(
+            id=conversation_id,
+            user_id=current_user.id
+        ).first()
         if not conversation:
             return jsonify({
                 'success': False,
-                'message': '对话不存在'
+                'message': '对话不存在或无权访问'
             }), 404
         
         # 删除对话（级联删除消息）
@@ -209,7 +212,8 @@ def delete_conversation(conversation_id):
         }), 500
 
 @conversations_bp.route('/<int:conversation_id>', methods=['PUT'])
-def update_conversation(conversation_id):
+@login_required
+def update_conversation(current_user, conversation_id):
     """更新对话标题"""
     try:
         data = request.get_json()
@@ -221,12 +225,14 @@ def update_conversation(conversation_id):
                 'message': '缺少必要参数: title'
             }), 400
         
-        # 验证对话是否存在
-        conversation = Conversation.query.get(conversation_id)
+        conversation = Conversation.query.filter_by(
+            id=conversation_id,
+            user_id=current_user.id
+        ).first()
         if not conversation:
             return jsonify({
                 'success': False,
-                'message': '对话不存在'
+                'message': '对话不存在或无权访问'
             }), 404
         
         # 更新对话标题
@@ -252,7 +258,8 @@ def update_conversation(conversation_id):
         }), 500
 
 @conversations_bp.route('/<int:conversation_id>/context', methods=['GET'])
-def get_conversation_context(conversation_id):
+@login_required
+def get_conversation_context(current_user, conversation_id):
     """
     获取指定对话的完整上下文信息
     专为远程服务器调用设计，提供对话历史和元数据
@@ -268,12 +275,15 @@ def get_conversation_context(conversation_id):
             }), 400
         
         # 获取对话信息
-        conversation = Conversation.query.filter_by(id=conversation_id).first()
+        conversation = Conversation.query.filter_by(
+            id=conversation_id,
+            user_id=current_user.id
+        ).first()
         if not conversation:
             current_app.logger.warning(f"对话不存在: {conversation_id}")
             return jsonify({
                 'success': False,
-                'error': '对话不存在',
+                'error': '对话不存在或无权访问',
                 'conversation_id': conversation_id
             }), 404
         
